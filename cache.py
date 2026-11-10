@@ -2,6 +2,10 @@
 module uses. Results live in this process only and expire after `ttl`
 (a datetime.timedelta), so details + rates + nearby + price insights on the
 same hotel cost one fetch from kayak.com.
+
+Entries are stored as JSON and decoded into a fresh object on every hit, so
+a caller that changes the result it gets back (routes.paginate pops the
+`pagination` block) never changes what the next caller receives.
 """
 import json
 import threading
@@ -27,11 +31,11 @@ def cached_call(namespace, data, fn, ttl, cache=True, refresh=False):
         with _lock:
             hit = _store.get(key)
         if hit and hit[0] > now:
-            return hit[1]
+            return json.loads(hit[1])
     result = fn(**data)
     with _lock:
         if len(_store) >= MAX_ENTRIES:
             for stale in [k for k, (expires, _) in _store.items() if expires <= now] or list(_store)[:100]:
                 _store.pop(stale, None)
-        _store[key] = (now + ttl.total_seconds(), result)
+        _store[key] = (now + ttl.total_seconds(), json.dumps(result, ensure_ascii=False, default=str))
     return result
